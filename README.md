@@ -20,7 +20,7 @@ When you see this anywhere in the text:
 
 Feel free to add or correct me on anything. Please spare the numbering and formatting, I moved it from my Notion page.
 
-1. Sending ether to a contract B from a contract(for eg. using .send or .transfer), executes the code of B’s fallback function if it exists(and receive doesn’t exist). 
+0. Sending ether to a contract B from a contract(for eg. using .send or .transfer), executes the code of B’s fallback function if it exists(and receive doesn’t exist). 
 
 ![Untitled](https://user-images.githubusercontent.com/93861625/234314831-00fe6e9c-8330-4ed1-944d-c729dd074a70.png)
 
