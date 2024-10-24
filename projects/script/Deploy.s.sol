@@ -81,7 +81,7 @@ contract Deploy is BaseScript {
         try investmentTracker.positions(address(this)) returns (
             uint256 invested, uint256 currentValue, uint256 roiBasisPoints
         ) {
-            console.log("Investment Position Details:");
+            console.log(" - Investment Position Details - ");
             console.log("The invested amount is:", invested);
             console.log("The current value is:", currentValue);
             console.log("The ROI in basis points is:", roiBasisPoints);
