@@ -1,175 +1,130 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-contract DivisionExample {
-    // Event to log percentage calculations
-    event PercentageCalculated(uint256 numerator, uint256 denominator, uint256 percentage);
+// IT is VERY important to always check return values for external contract calls, if not, they could be silently
+// failing
+// and code will keep on executing
 
-    // In Solidity, division results are automatically rounded towards zero
-    // Division by zero causes panic error and cannot be caught, even in try/catch
-    // It will escape 'unchecked' blocks
+contract SendExample {
+    // Events to log success/failure
+    event SendSuccess(address recipient, uint256 amount);
+    event SendFailed(address recipient, uint256 amount, string reason);
 
-    function divideByZero() public pure returns (uint256) {
-        uint256 a = 5;
-        uint256 b = 0;
+    // UNSAFE: Not checking send's return value
+    function unsafeSend(address payable recipient, uint256 amount) public {
+        // BAD - Don't do this!
+        // send() might fail silently if:
+        // 1. Call stack depth reaches 1024
+        // 2. Recipient contract reverts
+        // 3. Recipient has no receive() or fallback()
+        recipient.send(amount); // Return value ignored!
+    }
 
-        // This will panic and revert
-        // Cannot be caught with try/catch
-        // Will escape unchecked block
-        unchecked {
-            return a / b; // This will panic
+    // SAFE: Checking send's return value
+    function safeSend(address payable recipient, uint256 amount) public {
+        // GOOD - Always check return value
+        bool success = recipient.send(amount);
+        require(success, "Send failed");
+        emit SendSuccess(recipient, amount);
+    }
+
+    // SAFER: Using call with return value check (recommended approach)
+    function saferSendWithCall(address payable recipient, uint256 amount) public {
+        // BEST - Using call with value
+        (bool success,) = recipient.call{ value: amount }("");
+        require(success, "Call failed");
+        emit SendSuccess(recipient, amount);
+    }
+
+    // Receive function to accept Ether
+    receive() external payable { }
+}
+
+// Contract to demonstrate call stack depth attack
+contract CallStackAttacker {
+    // Counter to track recursion depth
+    uint256 public depth = 0;
+
+    // Function to force deep call stack
+    function forceDeepCallStack(address target, uint256 desiredDepth) external {
+        if (depth < desiredDepth) {
+            depth++;
+            // Recursive call to increase call stack
+            CallStackAttacker(target).forceDeepCallStack(target, desiredDepth);
         }
-    }
-
-    // Safe division function with check
-    function safeDivide(uint256 a, uint256 b) public pure returns (uint256) {
-        require(b > 0, "Division by zero not allowed");
-        return a / b;
-    }
-
-    // Example with positive numbers (rounds down)
-    function dividePositive() public pure returns (int256) {
-        int256 a = 7;
-        int256 b = 2;
-        // 7/2 = 3.5, but returns 3 (rounded down)
-        return a / b;
-    }
-
-    // Calculate percentage with different precision levels
-    // precision = 0: whole numbers
-    // precision = 2: two decimal places
-    function calculatePercentage(uint256 numerator, uint256 denominator, uint8 precision) public returns (uint256) {
-        require(denominator > 0, "Denominator cannot be zero");
-
-        // Calculate multiplier based on precision
-        // precision = 0: multiplier = 100
-        // precision = 2: multiplier = 10000
-        uint256 multiplier = 100 * (10 ** precision);
-
-        uint256 result = (numerator * multiplier) / denominator;
-        emit PercentageCalculated(numerator, denominator, result);
-        return result;
-    }
-
-    // Practical examples of percentage calculations
-    struct Investment {
-        uint256 amount;
-        uint256 profit; // Changed from 'returns' to 'profit'
-    }
-
-    // Calculate ROI (Return on Investment)
-    function calculateROI(Investment memory investment) public pure returns (uint256) {
-        require(investment.amount > 0, "Investment amount cannot be zero");
-
-        // ROI = (profit / investment) * 100
-        // Using 2 decimal precision
-        // Returns value is in basis points (10000 = 100.00%)
-        return (investment.profit * 10_000) / investment.amount;
-    }
-
-    // Example: Calculate discount
-    function calculateDiscount(
-        uint256 originalPrice,
-        uint256 discountPercent
-    )
-        public
-        pure
-        returns (uint256 discountedPrice)
-    {
-        require(discountPercent <= 100 * 100, "Discount cannot exceed 100%");
-
-        // Calculate discount amount
-        // Using 2 decimal precision for discount percent
-        uint256 discount = (originalPrice * discountPercent) / (100 * 100);
-        return originalPrice - discount;
-    }
-
-    // Example usage scenarios
-    function exampleScenarios()
-        public
-        returns (uint256 percentageExample, uint256 roiExample, uint256 discountExample)
-    {
-        // Scenario 1: Calculate 75.5% of 200
-        percentageExample = calculatePercentage(755, 1000, 1); // Should return 75.5
-
-        // Scenario 2: Calculate ROI for investment
-        Investment memory inv = Investment({
-            amount: 1000,
-            profit: 1250 // Changed from 'returns' to 'profit'
-         });
-        roiExample = calculateROI(inv); // Should return 12500 (125.00%)
-
-        // Scenario 3: Calculate price after 20% discount
-        discountExample = calculateDiscount(1000, 2000); // 20.00% discount on 1000
-
-        return (percentageExample, roiExample, discountExample);
     }
 }
 
-// Example contract showing how to use the percentage calculations
-contract InvestmentTracker {
-    DivisionExample private calculator;
+// Contract to test send under different conditions
+contract SendTester {
+    SendExample public sendExample;
+    CallStackAttacker public attacker;
 
-    struct InvestmentPosition {
-        uint256 invested;
-        uint256 currentValue;
-        uint256 roiBasisPoints; // ROI in basis points (100 = 1%)
+    event TestResult(string test, bool success);
+
+    constructor() {
+        sendExample = new SendExample();
+        attacker = new CallStackAttacker();
     }
 
-    mapping(address => InvestmentPosition) public positions;
-
-    constructor(address calculatorAddress) {
-        calculator = DivisionExample(calculatorAddress);
+    // Test normal send
+    function testNormalSend(address payable recipient) public payable {
+        // This should succeed under normal conditions
+        bool success = recipient.send(msg.value);
+        emit TestResult("Normal Send", success);
     }
 
-    // Update investment position and calculate ROI
-    function updatePosition(uint256 newValue) public {
-        InvestmentPosition storage position = positions[msg.sender];
-
-        if (position.invested == 0) {
-            position.invested = newValue;
-            position.currentValue = newValue;
-            position.roiBasisPoints = 10_000; // 100% (no gain/loss)
-        } else {
-            position.currentValue = newValue;
-            // Calculate new ROI
-            DivisionExample.Investment memory inv = DivisionExample.Investment({
-                amount: position.invested,
-                profit: newValue // Changed from 'returns' to 'profit'
-             });
-            position.roiBasisPoints = calculator.calculateROI(inv);
+    // Test send with deep call stack
+    function testSendWithDeepCallStack(address payable recipient) public payable {
+        // First, force deep call stack
+        try attacker.forceDeepCallStack(
+            address(attacker),
+            1000 // Close to 1024 limit
+        ) {
+            // Try to send after creating deep call stack
+            bool success = recipient.send(msg.value);
+            emit TestResult("Deep Call Stack Send", success);
+        } catch {
+            emit TestResult("Deep Call Stack Send", false);
         }
     }
 
-    // Get ROI as a formatted string (e.g., "125.50%")
-    function getROIFormatted(address investor) public view returns (string memory) {
-        InvestmentPosition memory position = positions[investor];
-        uint256 wholePart = position.roiBasisPoints / 100; // Get whole number
-        uint256 decimalPart = position.roiBasisPoints % 100; // Get decimal part
+    // Safe implementation example
+    function safeTransfer(address payable recipient, uint256 amount) public {
+        // Input validation
+        require(recipient != address(0), "Invalid recipient");
+        require(amount > 0, "Amount must be positive");
+        require(address(this).balance >= amount, "Insufficient balance");
 
-        // Format as string (simplified, you might want to add proper string handling)
-        return
-            string(abi.encodePacked(uint2str(wholePart), ".", decimalPart < 10 ? "0" : "", uint2str(decimalPart), "%"));
+        // Try send first
+        bool success = recipient.send(amount);
+
+        // If send fails, log it and revert
+        if (!success) {
+            emit TestResult("Safe Transfer", false);
+            revert("Send failed");
+        }
+
+        emit TestResult("Safe Transfer", true);
     }
 
-    // Helper function to convert uint to string
-    function uint2str(uint256 _i) internal pure returns (string memory) {
-        if (_i == 0) return "0";
-        uint256 j = _i;
-        uint256 len;
-        while (j != 0) {
-            len++;
-            j /= 10;
+    // Modern recommended approach using call
+    function modernTransfer(address payable recipient, uint256 amount) public {
+        require(recipient != address(0), "Invalid recipient");
+        require(amount > 0, "Amount must be positive");
+        require(address(this).balance >= amount, "Insufficient balance");
+
+        // Use call instead of send
+        (bool success,) = recipient.call{ value: amount }("");
+
+        // Always check return value
+        if (!success) {
+            emit TestResult("Modern Transfer", false);
+            revert("Transfer failed");
         }
-        bytes memory bstr = new bytes(len);
-        uint256 k = len;
-        while (_i != 0) {
-            k = k - 1;
-            uint8 temp = (48 + uint8(_i - _i / 10 * 10));
-            bytes1 b1 = bytes1(temp);
-            bstr[k] = b1;
-            _i /= 10;
-        }
-        return string(bstr);
+
+        emit TestResult("Modern Transfer", true);
     }
+
+    receive() external payable { }
 }
