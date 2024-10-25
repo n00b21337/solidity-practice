@@ -89,4 +89,7 @@ contract Deploy is BaseScript {
         console.log("TestAttack final balance:", address(testAttack).balance);
         console.log("Script final balance:", address(this).balance);
     }
+
+    // To receive ether in tests
+    receive() external payable { }
 }
