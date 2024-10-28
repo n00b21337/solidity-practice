@@ -1,145 +1,130 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-// Vulnerable contract using low-level calls
-contract VulnerableBank {
-    mapping(address => uint256) public balances;
+// Defaults per type
+// delete uint    => 0
+// delete bool    => false
+// delete address => address(0)
+// delete string  => ""
+// delete array   => length = 0
+// delete mapping element => 0
+// delete struct  => all members reset to defaults
 
-    // Event for logging withdrawals
-    event WithdrawalAttempted(address user, uint256 amount, bool success);
-
-    function deposit() public payable {
-        balances[msg.sender] += msg.value;
+contract DeleteExample {
+    // Struct to demonstrate delete on complex types
+    struct Person {
+        string name;
+        uint256 age;
+        bool isActive;
+        address wallet;
     }
 
-    // UNSAFE: Using low-level call without reentrancy protection
-    function unsafeWithdraw(uint256 amount) public {
-        require(balances[msg.sender] >= amount, "Insufficient balance");
+    // Variables to demonstrate delete
+    uint256 public simpleValue;
+    bool public boolValue = true;
+    address public addressValue = address(0x123);
+    string public stringValue = "Hello";
+    uint256[] public arrayValues;
+    mapping(uint256 => uint256) public mappingValues;
+    Person public person;
 
-        // DANGEROUS: Low-level call hands over control to recipient
-        // This can lead to reentrancy attacks
-        (bool success,) = msg.sender.call{ value: amount }("");
+    // Events to track changes
+    event ValueDeleted(string valueType, string message);
+    event ValueBefore(string valueType, bytes value);
+    event ValueAfter(string valueType, bytes value);
 
-        // State change happens AFTER external call (VULNERABLE)
-        if (success) {
-            balances[msg.sender] -= amount;
-        }
+    // Initialize some values
+    function initialize() external {
+        simpleValue = 100;
+        arrayValues = [1, 2, 3, 4, 5];
+        mappingValues[1] = 100;
+        mappingValues[2] = 200;
 
-        emit WithdrawalAttempted(msg.sender, amount, success);
-    }
-}
-
-// Malicious contract that exploits the vulnerable contract
-contract Attacker {
-    VulnerableBank public bank;
-    uint256 public attackCount;
-    uint256 public withdrawAmount;
-
-    event AttackLog(string message, uint256 balance);
-
-    constructor(address bankAddress) {
-        bank = VulnerableBank(bankAddress);
+        person = Person({ name: "Alice", age: 30, isActive: true, wallet: msg.sender });
     }
 
-    // Function to start the attack
-    function attack() public payable {
-        require(msg.value >= 1 ether, "Need 1 ether to attack");
-
-        // Initial deposit
-        bank.deposit{ value: 1 ether }();
-        withdrawAmount = 1 ether;
-
-        // Start the attack
-        bank.unsafeWithdraw(withdrawAmount);
+    // Delete simple value
+    function deleteSimpleValue() external {
+        emit ValueBefore("simpleValue", abi.encode(simpleValue));
+        delete simpleValue; // Sets to 0
+        emit ValueAfter("simpleValue", abi.encode(simpleValue));
+        emit ValueDeleted("simpleValue", "Reset to 0");
     }
 
-    // Receive function that gets called by the low-level call
-    receive() external payable {
-        attackCount++;
-        emit AttackLog("Reentrance attack count:", attackCount);
-
-        // If we still have balance and haven't attacked too many times
-        if (address(bank).balance >= withdrawAmount && attackCount < 5) {
-            // Reenter the withdraw function!
-            bank.unsafeWithdraw(withdrawAmount);
-        }
-    }
-}
-
-// Safe contract using proper controls
-contract SafeBank {
-    mapping(address => uint256) public balances;
-    bool private locked; // Reentrancy guard
-
-    event WithdrawalCompleted(address user, uint256 amount);
-
-    modifier noReentrant() {
-        require(!locked, "No reentrancy");
-        locked = true;
-        _;
-        locked = false;
+    // Delete bool
+    function deleteBool() external {
+        emit ValueBefore("boolValue", abi.encode(boolValue));
+        delete boolValue; // Sets to false
+        emit ValueAfter("boolValue", abi.encode(boolValue));
+        emit ValueDeleted("boolValue", "Reset to false");
     }
 
-    function deposit() public payable {
-        balances[msg.sender] += msg.value;
+    // Delete address
+    function deleteAddress() external {
+        emit ValueBefore("addressValue", abi.encode(addressValue));
+        delete addressValue; // Sets to address(0)
+        emit ValueAfter("addressValue", abi.encode(addressValue));
+        emit ValueDeleted("addressValue", "Reset to address(0)");
     }
 
-    // SAFE: Protected against reentrancy
-    function safeWithdraw(uint256 amount) public noReentrant {
-        require(balances[msg.sender] >= amount, "Insufficient balance");
-
-        // Update state BEFORE external call
-        balances[msg.sender] -= amount;
-
-        // External call happens last
-        (bool success,) = msg.sender.call{ value: amount }("");
-        require(success, "Transfer failed");
-
-        emit WithdrawalCompleted(msg.sender, amount);
+    // Delete string
+    function deleteString() external {
+        emit ValueBefore("stringValue", abi.encode(stringValue));
+        delete stringValue; // Sets to empty string
+        emit ValueAfter("stringValue", abi.encode(stringValue));
+        emit ValueDeleted("stringValue", "Reset to empty string");
     }
 
-    // Even safer: Pull payment pattern
-    mapping(address => uint256) public pendingWithdrawals;
-
-    function requestWithdrawal(uint256 amount) public {
-        require(balances[msg.sender] >= amount, "Insufficient balance");
-        balances[msg.sender] -= amount;
-        pendingWithdrawals[msg.sender] += amount;
+    // Delete array
+    function deleteArray() external {
+        emit ValueBefore("arrayValues", abi.encode(arrayValues));
+        delete arrayValues; // Sets length to 0
+        emit ValueAfter("arrayValues", abi.encode(arrayValues));
+        emit ValueDeleted("arrayValues", "Reset to empty array");
     }
 
-    function completePendingWithdrawal() public noReentrant {
-        uint256 amount = pendingWithdrawals[msg.sender];
-        require(amount > 0, "No pending withdrawal");
-
-        pendingWithdrawals[msg.sender] = 0; // Update state first
-
-        (bool success,) = msg.sender.call{ value: amount }("");
-        require(success, "Transfer failed");
-    }
-}
-
-// Test contract to demonstrate the attack
-contract TestAttack {
-    VulnerableBank public vbank;
-    SafeBank public sbank;
-    Attacker public attacker;
-
-    constructor() {
-        vbank = new VulnerableBank();
-        sbank = new SafeBank();
+    function getArrayLength() external view returns (uint256) {
+        return arrayValues.length;
     }
 
-    function setupAndAttack() public payable {
-        // Deploy attacker
-        attacker = new Attacker(address(vbank));
-
-        // Fund attacker and start attack
-        attacker.attack{ value: msg.value }();
+    // Delete single array element
+    function deleteArrayElement(uint256 index) external {
+        require(index < arrayValues.length, "Index out of bounds");
+        emit ValueBefore("arrayElement", abi.encode(arrayValues[index]));
+        delete arrayValues[index]; // Sets element to 0
+        emit ValueAfter("arrayElement", abi.encode(arrayValues[index]));
+        emit ValueDeleted("arrayElement", "Reset element to 0");
     }
 
-    function checkBalances() public view returns (uint256 bankBalance, uint256 attackerBalance, uint256 attackCount) {
-        bankBalance = address(vbank).balance;
-        attackerBalance = address(attacker).balance;
-        attackCount = attacker.attackCount();
+    // Delete mapping element
+    function deleteMappingElement(uint256 key) external {
+        emit ValueBefore("mappingElement", abi.encode(mappingValues[key]));
+        delete mappingValues[key]; // Sets value to 0
+        emit ValueAfter("mappingElement", abi.encode(mappingValues[key]));
+        emit ValueDeleted("mappingElement", "Reset value to 0");
+    }
+
+    // Delete struct
+    function deleteStruct() external {
+        emit ValueBefore("person", abi.encode(person.name, person.age, person.isActive, person.wallet));
+        delete person; // Resets all fields to default values
+        emit ValueAfter("person", abi.encode(person.name, person.age, person.isActive, person.wallet));
+        emit ValueDeleted("person", "Reset all fields to defaults");
+    }
+
+    // Get current values for verification
+    function getValues()
+        external
+        view
+        returns (
+            uint256 _simpleValue,
+            bool _boolValue,
+            address _addressValue,
+            string memory _stringValue,
+            uint256[] memory _arrayValues,
+            Person memory _person
+        )
+    {
+        return (simpleValue, boolValue, addressValue, stringValue, arrayValues, person);
     }
 }
