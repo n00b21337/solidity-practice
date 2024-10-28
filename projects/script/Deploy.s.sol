@@ -1,95 +1,81 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity >=0.8.25 <0.9.0;
 
-import { VulnerableBank, SafeBank, Attacker, TestAttack } from "../src/Bar.sol";
+import { SendExample, CallStackAttacker, SendTester } from "../src/Bar.sol";
 import { BaseScript, console } from "./Base.s.sol";
 
 contract Deploy is BaseScript {
     function run()
         public
         broadcast
-        returns (VulnerableBank vbank, SafeBank sbank, Attacker attacker, TestAttack testAttack)
+        returns (SendExample sendExample, CallStackAttacker attacker, SendTester sendTester)
     {
-        // Deploy all contracts
-        vbank = new VulnerableBank();
-        console.log("VulnerableBank deployed at:", address(vbank));
+        // Deploy contracts
+        sendExample = new SendExample();
+        console.log("SendExample deployed at:", address(sendExample));
 
-        sbank = new SafeBank();
-        console.log("SafeBank deployed at:", address(sbank));
+        attacker = new CallStackAttacker();
+        console.log("CallStackAttacker deployed at:", address(attacker));
 
-        attacker = new Attacker(address(vbank));
-        console.log("Attacker deployed at:", address(attacker));
+        sendTester = new SendTester();
+        console.log("SendTester deployed at:", address(sendTester));
 
-        testAttack = new TestAttack();
-        console.log("TestAttack deployed at:", address(testAttack));
+        // Fund SendTester for testing
+        payable(address(sendTester)).transfer(1 ether);
+        console.log("SendTester balance:", address(sendTester).balance);
 
-        // Log initial states
-        console.log("\n--- Initial States ---");
-        console.log("VulnerableBank balance:", address(vbank).balance);
-        console.log("Attacker balance:", address(attacker).balance);
-
-        // Test vulnerable bank attack
-        console.log("\n--- Testing Vulnerable Bank Attack ---");
-        try attacker.attack{ value: 1 ether }() {
-            console.log("Attack executed");
-            console.log("Attack count:", attacker.attackCount());
-            console.log("VulnerableBank balance after attack:", address(vbank).balance);
-            console.log("Attacker balance after attack:", address(attacker).balance);
+        // Test unsafe send
+        try sendExample.unsafeSend(payable(address(this)), 0.1 ether) {
+            console.log("Unsafe send executed (no way to know if it succeeded)");
         } catch {
-            console.log("Attack failed");
+            console.log("Unsafe send reverted");
         }
 
-        // Test safe bank
-        console.log("\n--- Testing Safe Bank ---");
-        try sbank.deposit{ value: 1.5 ether }() {
-            console.log("Deposited 1 ether to SafeBank");
-            console.log("SafeBank balance:", address(sbank).balance);
-
-            // Try to withdraw
-            try sbank.safeWithdraw(1 ether) {
-                console.log("Safe withdrawal successful");
-            } catch {
-                console.log("Safe withdrawal failed");
-            }
+        // Test safe send
+        try sendExample.safeSend(payable(address(this)), 0.1 ether) {
+            console.log("Safe send succeeded");
         } catch {
-            console.log("Safe bank deposit failed");
+            console.log("Safe send failed");
         }
 
-        // Test pull payment pattern
-        console.log("\n--- Testing Pull Payment Pattern ---");
-        try sbank.requestWithdrawal(0.5 ether) {
-            console.log("Withdrawal requested");
-            try sbank.completePendingWithdrawal() {
-                console.log("Pending withdrawal completed");
-            } catch {
-                console.log("Pending withdrawal completion failed");
-            }
+        // Test safer send with call
+        try sendExample.saferSendWithCall(payable(address(this)), 0.1 ether) {
+            console.log("Safer send with call succeeded");
         } catch {
-            console.log("Withdrawal request failed");
+            console.log("Safer send with call failed");
         }
 
-        // Use TestAttack contract
-        console.log("\n--- Testing via TestAttack Contract ---");
-        try testAttack.setupAndAttack{ value: 1 ether }() {
-            (uint256 bankBalance, uint256 attackerBalance, uint256 attackCount) = testAttack.checkBalances();
-
-            console.log("Test attack completed:");
-            console.log("Final bank balance:", bankBalance);
-            console.log("Final attacker balance:", attackerBalance);
-            console.log("Total attack count:", attackCount);
+        // Test normal send via SendTester
+        try sendTester.testNormalSend(payable(address(this))) {
+            console.log("Normal send test completed");
         } catch {
-            console.log("TestAttack setup/attack failed");
+            console.log("Normal send test failed");
         }
 
-        // Log final states
-        console.log("\n--- Final States ---");
-        console.log("VulnerableBank final balance:", address(vbank).balance);
-        console.log("SafeBank final balance:", address(sbank).balance);
-        console.log("Attacker final balance:", address(attacker).balance);
-        console.log("TestAttack final balance:", address(testAttack).balance);
-        console.log("Script final balance:", address(this).balance);
+        // Test deep call stack attack
+        try sendTester.testSendWithDeepCallStack(payable(address(this))) {
+            console.log("Deep call stack test completed");
+        } catch {
+            console.log("Deep call stack test failed");
+        }
+
+        // Test safe transfer
+        try sendTester.safeTransfer(payable(address(this)), 0.1 ether) {
+            console.log("Safe transfer succeeded");
+        } catch {
+            console.log("Safe transfer failed");
+        }
+
+        // Test modern transfer
+        try sendTester.modernTransfer(payable(address(this)), 0.1 ether) {
+            console.log("Modern transfer succeeded");
+        } catch {
+            console.log("Modern transfer failed");
+        }
+
+        // Log final balances
+        console.log("Final SendExample balance:", address(sendExample).balance);
+        console.log("Final SendTester balance:", address(sendTester).balance);
+        console.log("Final script balance:", address(this).balance);
     }
-
-    // To receive ether in tests
-    receive() external payable { }
 }

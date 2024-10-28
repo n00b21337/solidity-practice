@@ -1,145 +1,130 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-// Vulnerable contract using low-level calls
-contract VulnerableBank {
-    mapping(address => uint256) public balances;
+// IT is VERY important to always check return values for external contract calls, if not, they could be silently
+// failing
+// and code will keep on executing
 
-    // Event for logging withdrawals
-    event WithdrawalAttempted(address user, uint256 amount, bool success);
+contract SendExample {
+    // Events to log success/failure
+    event SendSuccess(address recipient, uint256 amount);
+    event SendFailed(address recipient, uint256 amount, string reason);
 
-    function deposit() public payable {
-        balances[msg.sender] += msg.value;
+    // UNSAFE: Not checking send's return value
+    function unsafeSend(address payable recipient, uint256 amount) public {
+        // BAD - Don't do this!
+        // send() might fail silently if:
+        // 1. Call stack depth reaches 1024
+        // 2. Recipient contract reverts
+        // 3. Recipient has no receive() or fallback()
+        recipient.send(amount); // Return value ignored!
     }
 
-    // UNSAFE: Using low-level call without reentrancy protection
-    function unsafeWithdraw(uint256 amount) public {
-        require(balances[msg.sender] >= amount, "Insufficient balance");
-
-        // DANGEROUS: Low-level call hands over control to recipient
-        // This can lead to reentrancy attacks
-        (bool success,) = msg.sender.call{ value: amount }("");
-
-        // State change happens AFTER external call (VULNERABLE)
-        if (success) {
-            balances[msg.sender] -= amount;
-        }
-
-        emit WithdrawalAttempted(msg.sender, amount, success);
+    // SAFE: Checking send's return value
+    function safeSend(address payable recipient, uint256 amount) public {
+        // GOOD - Always check return value
+        bool success = recipient.send(amount);
+        require(success, "Send failed");
+        emit SendSuccess(recipient, amount);
     }
+
+    // SAFER: Using call with return value check (recommended approach)
+    function saferSendWithCall(address payable recipient, uint256 amount) public {
+        // BEST - Using call with value
+        (bool success,) = recipient.call{ value: amount }("");
+        require(success, "Call failed");
+        emit SendSuccess(recipient, amount);
+    }
+
+    // Receive function to accept Ether
+    receive() external payable { }
 }
 
-// Malicious contract that exploits the vulnerable contract
-contract Attacker {
-    VulnerableBank public bank;
-    uint256 public attackCount;
-    uint256 public withdrawAmount;
+// Contract to demonstrate call stack depth attack
+contract CallStackAttacker {
+    // Counter to track recursion depth
+    uint256 public depth = 0;
 
-    event AttackLog(string message, uint256 balance);
-
-    constructor(address bankAddress) {
-        bank = VulnerableBank(bankAddress);
-    }
-
-    // Function to start the attack
-    function attack() public payable {
-        require(msg.value >= 1 ether, "Need 1 ether to attack");
-
-        // Initial deposit
-        bank.deposit{ value: 1 ether }();
-        withdrawAmount = 1 ether;
-
-        // Start the attack
-        bank.unsafeWithdraw(withdrawAmount);
-    }
-
-    // Receive function that gets called by the low-level call
-    receive() external payable {
-        attackCount++;
-        emit AttackLog("Reentrance attack count:", attackCount);
-
-        // If we still have balance and haven't attacked too many times
-        if (address(bank).balance >= withdrawAmount && attackCount < 5) {
-            // Reenter the withdraw function!
-            bank.unsafeWithdraw(withdrawAmount);
+    // Function to force deep call stack
+    function forceDeepCallStack(address target, uint256 desiredDepth) external {
+        if (depth < desiredDepth) {
+            depth++;
+            // Recursive call to increase call stack
+            CallStackAttacker(target).forceDeepCallStack(target, desiredDepth);
         }
     }
 }
 
-// Safe contract using proper controls
-contract SafeBank {
-    mapping(address => uint256) public balances;
-    bool private locked; // Reentrancy guard
+// Contract to test send under different conditions
+contract SendTester {
+    SendExample public sendExample;
+    CallStackAttacker public attacker;
 
-    event WithdrawalCompleted(address user, uint256 amount);
-
-    modifier noReentrant() {
-        require(!locked, "No reentrancy");
-        locked = true;
-        _;
-        locked = false;
-    }
-
-    function deposit() public payable {
-        balances[msg.sender] += msg.value;
-    }
-
-    // SAFE: Protected against reentrancy
-    function safeWithdraw(uint256 amount) public noReentrant {
-        require(balances[msg.sender] >= amount, "Insufficient balance");
-
-        // Update state BEFORE external call
-        balances[msg.sender] -= amount;
-
-        // External call happens last
-        (bool success,) = msg.sender.call{ value: amount }("");
-        require(success, "Transfer failed");
-
-        emit WithdrawalCompleted(msg.sender, amount);
-    }
-
-    // Even safer: Pull payment pattern
-    mapping(address => uint256) public pendingWithdrawals;
-
-    function requestWithdrawal(uint256 amount) public {
-        require(balances[msg.sender] >= amount, "Insufficient balance");
-        balances[msg.sender] -= amount;
-        pendingWithdrawals[msg.sender] += amount;
-    }
-
-    function completePendingWithdrawal() public noReentrant {
-        uint256 amount = pendingWithdrawals[msg.sender];
-        require(amount > 0, "No pending withdrawal");
-
-        pendingWithdrawals[msg.sender] = 0; // Update state first
-
-        (bool success,) = msg.sender.call{ value: amount }("");
-        require(success, "Transfer failed");
-    }
-}
-
-// Test contract to demonstrate the attack
-contract TestAttack {
-    VulnerableBank public vbank;
-    SafeBank public sbank;
-    Attacker public attacker;
+    event TestResult(string test, bool success);
 
     constructor() {
-        vbank = new VulnerableBank();
-        sbank = new SafeBank();
+        sendExample = new SendExample();
+        attacker = new CallStackAttacker();
     }
 
-    function setupAndAttack() public payable {
-        // Deploy attacker
-        attacker = new Attacker(address(vbank));
-
-        // Fund attacker and start attack
-        attacker.attack{ value: msg.value }();
+    // Test normal send
+    function testNormalSend(address payable recipient) public payable {
+        // This should succeed under normal conditions
+        bool success = recipient.send(msg.value);
+        emit TestResult("Normal Send", success);
     }
 
-    function checkBalances() public view returns (uint256 bankBalance, uint256 attackerBalance, uint256 attackCount) {
-        bankBalance = address(vbank).balance;
-        attackerBalance = address(attacker).balance;
-        attackCount = attacker.attackCount();
+    // Test send with deep call stack
+    function testSendWithDeepCallStack(address payable recipient) public payable {
+        // First, force deep call stack
+        try attacker.forceDeepCallStack(
+            address(attacker),
+            1000 // Close to 1024 limit
+        ) {
+            // Try to send after creating deep call stack
+            bool success = recipient.send(msg.value);
+            emit TestResult("Deep Call Stack Send", success);
+        } catch {
+            emit TestResult("Deep Call Stack Send", false);
+        }
     }
+
+    // Safe implementation example
+    function safeTransfer(address payable recipient, uint256 amount) public {
+        // Input validation
+        require(recipient != address(0), "Invalid recipient");
+        require(amount > 0, "Amount must be positive");
+        require(address(this).balance >= amount, "Insufficient balance");
+
+        // Try send first
+        bool success = recipient.send(amount);
+
+        // If send fails, log it and revert
+        if (!success) {
+            emit TestResult("Safe Transfer", false);
+            revert("Send failed");
+        }
+
+        emit TestResult("Safe Transfer", true);
+    }
+
+    // Modern recommended approach using call
+    function modernTransfer(address payable recipient, uint256 amount) public {
+        require(recipient != address(0), "Invalid recipient");
+        require(amount > 0, "Amount must be positive");
+        require(address(this).balance >= amount, "Insufficient balance");
+
+        // Use call instead of send
+        (bool success,) = recipient.call{ value: amount }("");
+
+        // Always check return value
+        if (!success) {
+            emit TestResult("Modern Transfer", false);
+            revert("Transfer failed");
+        }
+
+        emit TestResult("Modern Transfer", true);
+    }
+
+    receive() external payable { }
 }
