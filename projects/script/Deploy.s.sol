@@ -1,78 +1,95 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity >=0.8.25 <0.9.0;
 
-import { DeleteExample } from "../src/Bar.sol";
+import { VulnerableBank, SafeBank, Attacker, TestAttack } from "../src/Bar.sol";
 import { BaseScript, console } from "./Base.s.sol";
 
 contract Deploy is BaseScript {
-    function run() public broadcast returns (DeleteExample deleteExample) {
-        // Deploy contract
-        deleteExample = new DeleteExample();
-        console.log("DeleteExample deployed at:", address(deleteExample));
+    function run()
+        public
+        broadcast
+        returns (VulnerableBank vbank, SafeBank sbank, Attacker attacker, TestAttack testAttack)
+    {
+        // Deploy all contracts
+        vbank = new VulnerableBank();
+        console.log("VulnerableBank deployed at:", address(vbank));
 
-        // Initialize values
-        deleteExample.initialize();
-        logValues(deleteExample, "Initial values");
+        sbank = new SafeBank();
+        console.log("SafeBank deployed at:", address(sbank));
 
-        // Test delete operations
-        console.log("\n--- Testing Delete Operations ---");
+        attacker = new Attacker(address(vbank));
+        console.log("Attacker deployed at:", address(attacker));
 
-        // Delete simple value
-        deleteExample.deleteSimpleValue();
-        console.log("Simple value after delete:", deleteExample.simpleValue());
+        testAttack = new TestAttack();
+        console.log("TestAttack deployed at:", address(testAttack));
 
-        // Delete bool
-        deleteExample.deleteBool();
-        console.log("Bool value after delete:", deleteExample.boolValue());
+        // Log initial states
+        console.log("\n--- Initial States ---");
+        console.log("VulnerableBank balance:", address(vbank).balance);
+        console.log("Attacker balance:", address(attacker).balance);
 
-        // Delete address
-        deleteExample.deleteAddress();
-        console.log("Address value after delete:", deleteExample.addressValue());
+        // Test vulnerable bank attack
+        console.log("\n--- Testing Vulnerable Bank Attack ---");
+        try attacker.attack{ value: 1 ether }() {
+            console.log("Attack executed");
+            console.log("Attack count:", attacker.attackCount());
+            console.log("VulnerableBank balance after attack:", address(vbank).balance);
+            console.log("Attacker balance after attack:", address(attacker).balance);
+        } catch {
+            console.log("Attack failed");
+        }
 
-        // Delete string
-        deleteExample.deleteString();
-        console.log("String value after delete:", deleteExample.stringValue());
+        // Test safe bank
+        console.log("\n--- Testing Safe Bank ---");
+        try sbank.deposit{ value: 1.5 ether }() {
+            console.log("Deposited 1 ether to SafeBank");
+            console.log("SafeBank balance:", address(sbank).balance);
 
-        // Delete array
-        deleteExample.initialize();
-        deleteExample.deleteArray();
-        console.log("Array length after delete:", deleteExample.getArrayLength());
+            // Try to withdraw
+            try sbank.safeWithdraw(1 ether) {
+                console.log("Safe withdrawal successful");
+            } catch {
+                console.log("Safe withdrawal failed");
+            }
+        } catch {
+            console.log("Safe bank deposit failed");
+        }
 
-        // Reinitialize for array element delete
-        deleteExample.initialize();
-        deleteExample.deleteArrayElement(2);
-        console.log("Array element 2 after delete:", deleteExample.arrayValues(2));
+        // Test pull payment pattern
+        console.log("\n--- Testing Pull Payment Pattern ---");
+        try sbank.requestWithdrawal(0.5 ether) {
+            console.log("Withdrawal requested");
+            try sbank.completePendingWithdrawal() {
+                console.log("Pending withdrawal completed");
+            } catch {
+                console.log("Pending withdrawal completion failed");
+            }
+        } catch {
+            console.log("Withdrawal request failed");
+        }
 
-        // Delete mapping element
-        deleteExample.deleteMappingElement(1);
-        console.log("Mapping value 1 after delete:", deleteExample.mappingValues(1));
+        // Use TestAttack contract
+        console.log("\n--- Testing via TestAttack Contract ---");
+        try testAttack.setupAndAttack{ value: 1 ether }() {
+            (uint256 bankBalance, uint256 attackerBalance, uint256 attackCount) = testAttack.checkBalances();
 
-        // Delete struct
-        deleteExample.deleteStruct();
+            console.log("Test attack completed:");
+            console.log("Final bank balance:", bankBalance);
+            console.log("Final attacker balance:", attackerBalance);
+            console.log("Total attack count:", attackCount);
+        } catch {
+            console.log("TestAttack setup/attack failed");
+        }
 
-        // Log final state
-        logValues(deleteExample, "Final values");
+        // Log final states
+        console.log("\n--- Final States ---");
+        console.log("VulnerableBank final balance:", address(vbank).balance);
+        console.log("SafeBank final balance:", address(sbank).balance);
+        console.log("Attacker final balance:", address(attacker).balance);
+        console.log("TestAttack final balance:", address(testAttack).balance);
+        console.log("Script final balance:", address(this).balance);
     }
 
-    function logValues(DeleteExample deleteExample, string memory label) internal view {
-        console.log("\n---", label, "---");
-        (
-            uint256 simpleValue,
-            bool boolValue,
-            address addressValue,
-            string memory stringValue,
-            uint256[] memory arrayValues,
-            DeleteExample.Person memory person
-        ) = deleteExample.getValues();
-
-        console.log("Simple value:", simpleValue);
-        console.log("Bool value:", boolValue);
-        console.log("Address value:", addressValue);
-        console.log("String value:", stringValue);
-        console.log("Array length:", arrayValues.length);
-        console.log("Person name:", person.name);
-        console.log("Person age:", person.age);
-        console.log("Person active:", person.isActive);
-        console.log("Person wallet:", person.wallet);
-    }
+    // To receive ether in tests
+    receive() external payable { }
 }
