@@ -15,3 +15,5 @@
    called contracts must have the same storage layout, otherwise clusterfuck happens
 10. Enums are just an abstraction of unsigned integers (uint8). In the ABI (Application Binary Interface), enums are
     always represented as uint8 values.
+11. Delete vars, doesnt delete and free space, it only set variables to their default values, check the code for
+    defaults
