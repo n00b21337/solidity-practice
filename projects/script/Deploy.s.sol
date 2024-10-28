@@ -41,7 +41,7 @@ contract Deploy is BaseScript {
 
         // Test safe bank
         console.log("\n--- Testing Safe Bank ---");
-        try sbank.deposit{ value: 1 ether }() {
+        try sbank.deposit{ value: 1.5 ether }() {
             console.log("Deposited 1 ether to SafeBank");
             console.log("SafeBank balance:", address(sbank).balance);
 
