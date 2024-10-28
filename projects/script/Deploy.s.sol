@@ -1,78 +1,66 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity >=0.8.25 <0.9.0;
 
-import { DeleteExample } from "../src/Bar.sol";
+import { TargetContract, CallExamples } from "../src/Bar.sol";
 import { BaseScript, console } from "./Base.s.sol";
 
 contract Deploy is BaseScript {
-    function run() public broadcast returns (DeleteExample deleteExample) {
-        // Deploy contract
-        deleteExample = new DeleteExample();
-        console.log("DeleteExample deployed at:", address(deleteExample));
+    function run() public broadcast returns (TargetContract target, CallExamples callExamples) {
+        // Deploy contracts
+        target = new TargetContract();
+        console.log("TargetContract deployed at:", address(target));
 
-        // Initialize values
-        deleteExample.initialize();
-        logValues(deleteExample, "Initial values");
+        callExamples = new CallExamples();
+        console.log("CallExamples deployed at:", address(callExamples));
 
-        // Test delete operations
-        console.log("\n--- Testing Delete Operations ---");
+        console.log("\n--- Testing Normal Call ---");
+        try callExamples.normalCall(target, 123) {
+            console.log("Normal call succeeded");
+            console.log("Target value:", target.value());
+        } catch {
+            console.log("Normal call failed");
+        }
 
-        // Delete simple value
-        deleteExample.deleteSimpleValue();
-        console.log("Simple value after delete:", deleteExample.simpleValue());
+        console.log("\n--- Testing Low Level Calls ---");
 
-        // Delete bool
-        deleteExample.deleteBool();
-        console.log("Bool value after delete:", deleteExample.boolValue());
+        // Test proper low-level calls
+        try callExamples.correctLowLevelCalls(address(target)) {
+            console.log("Correct low-level calls executed");
+            console.log("Target value:", target.value());
+            console.log("Target message:", target.message());
+        } catch {
+            console.log("Correct low-level calls failed");
+        }
 
-        // Delete address
-        deleteExample.deleteAddress();
-        console.log("Address value after delete:", deleteExample.addressValue());
+        console.log("\n--- Testing Dangerous Calls ---");
 
-        // Delete string
-        deleteExample.deleteString();
-        console.log("String value after delete:", deleteExample.stringValue());
+        // Test dangerous calls
+        try callExamples.dangerousExamples(address(target)) {
+            console.log("Dangerous calls executed");
+            console.log("Target value (should be unchanged):", target.value());
+        } catch {
+            console.log("Dangerous calls failed");
+        }
 
-        // Delete array
-        deleteExample.initialize();
-        deleteExample.deleteArray();
-        console.log("Array length after delete:", deleteExample.getArrayLength());
+        // Test sending Ether
+        console.log("\n--- Testing Ether Send ---");
+        try callExamples.sendEtherWithCall{ value: 1 ether }(address(target)) {
+            console.log("Ether sent successfully");
+            console.log("Target balance:", address(target).balance);
+        } catch {
+            console.log("Ether send failed");
+        }
 
-        // Reinitialize for array element delete
-        deleteExample.initialize();
-        deleteExample.deleteArrayElement(2);
-        console.log("Array element 2 after delete:", deleteExample.arrayValues(2));
-
-        // Delete mapping element
-        deleteExample.deleteMappingElement(1);
-        console.log("Mapping value 1 after delete:", deleteExample.mappingValues(1));
-
-        // Delete struct
-        deleteExample.deleteStruct();
-
-        // Log final state
-        logValues(deleteExample, "Final values");
+        // Test raw call data
+        console.log("\n--- Testing Raw Call Data ---");
+        bytes memory correctData = abi.encodeWithSignature("setValue(uint256)", 999);
+        try callExamples.lowLevelCall(address(target), correctData) {
+            console.log("Raw call succeeded");
+            console.log("Target value:", target.value());
+        } catch {
+            console.log("Raw call failed");
+        }
     }
 
-    function logValues(DeleteExample deleteExample, string memory label) internal view {
-        console.log("\n---", label, "---");
-        (
-            uint256 simpleValue,
-            bool boolValue,
-            address addressValue,
-            string memory stringValue,
-            uint256[] memory arrayValues,
-            DeleteExample.Person memory person
-        ) = deleteExample.getValues();
-
-        console.log("Simple value:", simpleValue);
-        console.log("Bool value:", boolValue);
-        console.log("Address value:", addressValue);
-        console.log("String value:", stringValue);
-        console.log("Array length:", arrayValues.length);
-        console.log("Person name:", person.name);
-        console.log("Person age:", person.age);
-        console.log("Person active:", person.isActive);
-        console.log("Person wallet:", person.wallet);
-    }
+    receive() external payable { }
 }

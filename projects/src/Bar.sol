@@ -1,130 +1,85 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-// Defaults per type
-// delete uint    => 0
-// delete bool    => false
-// delete address => address(0)
-// delete string  => ""
-// delete array   => length = 0
-// delete mapping element => 0
-// delete struct  => all members reset to defaults
+// Target contract with normal functions
+contract TargetContract {
+    uint256 public value;
+    string public message;
 
-contract DeleteExample {
-    // Struct to demonstrate delete on complex types
-    struct Person {
-        string name;
-        uint256 age;
-        bool isActive;
-        address wallet;
+    event FunctionCalled(string name, bytes data);
+
+    // Normal function with strict typing
+    function setValue(uint256 _value) external {
+        value = _value;
+        emit FunctionCalled("setValue", abi.encode(_value));
     }
 
-    // Variables to demonstrate delete
-    uint256 public simpleValue;
-    bool public boolValue = true;
-    address public addressValue = address(0x123);
-    string public stringValue = "Hello";
-    uint256[] public arrayValues;
-    mapping(uint256 => uint256) public mappingValues;
-    Person public person;
-
-    // Events to track changes
-    event ValueDeleted(string valueType, string message);
-    event ValueBefore(string valueType, bytes value);
-    event ValueAfter(string valueType, bytes value);
-
-    // Initialize some values
-    function initialize() external {
-        simpleValue = 100;
-        arrayValues = [1, 2, 3, 4, 5];
-        mappingValues[1] = 100;
-        mappingValues[2] = 200;
-
-        person = Person({ name: "Alice", age: 30, isActive: true, wallet: msg.sender });
+    // Function expecting string
+    function setMessage(string memory _message) external {
+        message = _message;
+        emit FunctionCalled("setMessage", abi.encode(_message));
     }
 
-    // Delete simple value
-    function deleteSimpleValue() external {
-        emit ValueBefore("simpleValue", abi.encode(simpleValue));
-        delete simpleValue; // Sets to 0
-        emit ValueAfter("simpleValue", abi.encode(simpleValue));
-        emit ValueDeleted("simpleValue", "Reset to 0");
+    // Function to receive Ether
+    receive() external payable { }
+}
+
+// Contract demonstrating different call methods
+contract CallExamples {
+    event CallResult(bool success, bytes data);
+
+    // Normal typed call - Safe with checks
+    function normalCall(TargetContract target, uint256 _value) external {
+        // This enforces:
+        // 1. Function must exist
+        // 2. Types must match
+        // 3. Proper argument packing
+        target.setValue(_value);
     }
 
-    // Delete bool
-    function deleteBool() external {
-        emit ValueBefore("boolValue", abi.encode(boolValue));
-        delete boolValue; // Sets to false
-        emit ValueAfter("boolValue", abi.encode(boolValue));
-        emit ValueDeleted("boolValue", "Reset to false");
+    // Low-level call - Bypasses checks
+    function lowLevelCall(address target, bytes memory data) external {
+        // This bypasses:
+        // 1. Function existence check
+        // 2. Type checking
+        // 3. Argument packing
+        (bool success, bytes memory returnData) = target.call(data);
+        emit CallResult(success, returnData);
     }
 
-    // Delete address
-    function deleteAddress() external {
-        emit ValueBefore("addressValue", abi.encode(addressValue));
-        delete addressValue; // Sets to address(0)
-        emit ValueAfter("addressValue", abi.encode(addressValue));
-        emit ValueDeleted("addressValue", "Reset to address(0)");
+    // Examples of dangerous/bypassed calls
+    function dangerousExamples(address target) external {
+        // 1. Call non-existent function - Still executes but fails
+        (bool success1,) = target.call(abi.encodeWithSignature("nonExistentFunction()"));
+        emit CallResult(success1, "Called non-existent function");
+
+        // 2. Wrong type arguments - No type checking
+        (bool success2,) = target.call(abi.encodeWithSignature("setValue(string)", "wrong type"));
+        emit CallResult(success2, "Called with wrong type");
+
+        // 3. Wrong number of arguments - No argument checking
+        (bool success3,) = target.call(abi.encodeWithSignature("setValue(uint256,uint256)", 1, 2));
+        emit CallResult(success3, "Called with wrong number of args");
+
+        // 4. Malformed calldata - Raw bytes
+        (bool success4,) = target.call(hex"deadbeef");
+        emit CallResult(success4, "Called with malformed data");
     }
 
-    // Delete string
-    function deleteString() external {
-        emit ValueBefore("stringValue", abi.encode(stringValue));
-        delete stringValue; // Sets to empty string
-        emit ValueAfter("stringValue", abi.encode(stringValue));
-        emit ValueDeleted("stringValue", "Reset to empty string");
+    // Example of correct low-level calls
+    function correctLowLevelCalls(address target) external {
+        // Proper function signature and argument encoding
+        (bool success1,) = target.call(abi.encodeWithSignature("setValue(uint256)", 123));
+        emit CallResult(success1, "Correct setValue call");
+
+        // Proper encoding for string
+        (bool success2,) = target.call(abi.encodeWithSignature("setMessage(string)", "Hello"));
+        emit CallResult(success2, "Correct setMessage call");
     }
 
-    // Delete array
-    function deleteArray() external {
-        emit ValueBefore("arrayValues", abi.encode(arrayValues));
-        delete arrayValues; // Sets length to 0
-        emit ValueAfter("arrayValues", abi.encode(arrayValues));
-        emit ValueDeleted("arrayValues", "Reset to empty array");
-    }
-
-    function getArrayLength() external view returns (uint256) {
-        return arrayValues.length;
-    }
-
-    // Delete single array element
-    function deleteArrayElement(uint256 index) external {
-        require(index < arrayValues.length, "Index out of bounds");
-        emit ValueBefore("arrayElement", abi.encode(arrayValues[index]));
-        delete arrayValues[index]; // Sets element to 0
-        emit ValueAfter("arrayElement", abi.encode(arrayValues[index]));
-        emit ValueDeleted("arrayElement", "Reset element to 0");
-    }
-
-    // Delete mapping element
-    function deleteMappingElement(uint256 key) external {
-        emit ValueBefore("mappingElement", abi.encode(mappingValues[key]));
-        delete mappingValues[key]; // Sets value to 0
-        emit ValueAfter("mappingElement", abi.encode(mappingValues[key]));
-        emit ValueDeleted("mappingElement", "Reset value to 0");
-    }
-
-    // Delete struct
-    function deleteStruct() external {
-        emit ValueBefore("person", abi.encode(person.name, person.age, person.isActive, person.wallet));
-        delete person; // Resets all fields to default values
-        emit ValueAfter("person", abi.encode(person.name, person.age, person.isActive, person.wallet));
-        emit ValueDeleted("person", "Reset all fields to defaults");
-    }
-
-    // Get current values for verification
-    function getValues()
-        external
-        view
-        returns (
-            uint256 _simpleValue,
-            bool _boolValue,
-            address _addressValue,
-            string memory _stringValue,
-            uint256[] memory _arrayValues,
-            Person memory _person
-        )
-    {
-        return (simpleValue, boolValue, addressValue, stringValue, arrayValues, person);
+    // Send Ether with call
+    function sendEtherWithCall(address target) external payable {
+        (bool success,) = target.call{ value: msg.value }("");
+        emit CallResult(success, "Sent Ether with call");
     }
 }
