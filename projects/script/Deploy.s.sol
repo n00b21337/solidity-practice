@@ -1,66 +1,38 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity >=0.8.25 <0.9.0;
 
-import { ExtCodeSizeExample, TargetContract } from "../src/Bar.sol";
+import { VulnerableContract, Attacker } from "../src/Bar.sol";
 import { BaseScript, console } from "./Base.s.sol";
 
 contract Deploy is BaseScript {
-    function run() public broadcast returns (ExtCodeSizeExample example, TargetContract target) {
+    function run() public broadcast returns (VulnerableContract vulnerable, Attacker attacker) {
         // Deploy contracts
-        example = new ExtCodeSizeExample();
-        console.log("ExtCodeSizeExample deployed at:", address(example));
+        vulnerable = new VulnerableContract();
+        attacker = new Attacker();
 
-        target = new TargetContract();
-        console.log("TargetContract deployed at:", address(target));
+        console.log("\n--- Testing Vulnerable Contract ---");
+        console.log("Initial balance:", vulnerable.getBalance());
 
-        // Create a non-existent address
-        address nonExistent = address(uint160(uint256(keccak256("nonexistent"))));
-        console.log("Non-existent address:", nonExistent);
+        // Test normal operation - expect it to succeed when balance is 0
+        //    vm.expectRevert(); // This will pass if the function reverts
+        vulnerable.unsafeFunction();
+        console.log("Function reverted as expected with zero balance");
 
-        // Test with existing contract
-        console.log("\n--- Testing with existing contract ---");
-        try example.safeExternalCall(address(target)) {
-            console.log("Safe call to existing contract succeeded");
-        } catch {
-            console.log("Safe call to existing contract failed");
-        }
+        // Attack by forcing ETH
+        attacker.attackVulnerable{ value: 1 ether }(address(vulnerable));
+        console.log("Forced ETH sent");
+        console.log("New balance:", vulnerable.getBalance());
 
-        console.log("\nContract sizes:");
-        console.log("Target contract:", example.hasCode(address(target)));
-        console.log("Non-existent:", example.hasCode(nonExistent));
+        // Test after attack - expect specific revert message
+        vm.expectRevert("Must have no ether");
+        vulnerable.unsafeFunction();
+        console.log("Function reverted as expected after force sending ETH");
 
-        // Test unsafe calls to non-existent contract
-        console.log("\n--- Testing with non-existent contract ---");
-        try example.unsafeCallToNonExistent(nonExistent) {
-            console.log("Unsafe call 'succeeded' to non-existent contract!");
-        } catch {
-            console.log("Unsafe call failed");
-        }
+        // Can also test with specific revert message bytes
+        vm.expectRevert(abi.encodePacked("Must have no ether"));
+        vulnerable.unsafeFunction();
+        console.log("Function reverted with expected message");
 
-        // Test delegatecall
-        console.log("\n--- Testing delegatecall ---");
-        try example.unsafeDelegateCallToNonExistent(nonExistent) {
-            console.log("Unsafe delegatecall 'succeeded' to non-existent contract!");
-        } catch {
-            console.log("Unsafe delegatecall failed");
-        }
-
-        // Test transfer
-        console.log("\n--- Testing transfer ---");
-        try example.transferToNonExistent(payable(nonExistent)) {
-            console.log("Transfer succeeded");
-        } catch {
-            console.log("Transfer failed (expected)");
-        }
-
-        // Test safe version with manual check
-        console.log("\n--- Testing safe version with manual check ---");
-        try example.safeCallWithCheck(nonExistent) {
-            console.log("Safe call succeeded");
-        } catch {
-            console.log("Safe call failed due to extcodesize check (expected)");
-        }
+        console.log("All tests completed");
     }
-
-    receive() external payable { }
 }

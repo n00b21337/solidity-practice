@@ -20,4 +20,6 @@
 12. The evm considers a call to non-existing contract to always succeed, so there is a check of extcodesize > 0 when
     making an external call. But call, staticcall, delegatecall, send, transfer do not include this check so need to add
     it if you are calling non specified contracts
-13.
+13. address(this).balance == 0 is not good check if the contract has no ether, as it might get from miners/stakers in
+    the same block
+14.
