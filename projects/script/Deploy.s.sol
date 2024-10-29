@@ -1,64 +1,64 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity >=0.8.25 <0.9.0;
 
-import { TargetContract, CallExamples } from "../src/Bar.sol";
+import { ExtCodeSizeExample, TargetContract } from "../src/Bar.sol";
 import { BaseScript, console } from "./Base.s.sol";
 
 contract Deploy is BaseScript {
-    function run() public broadcast returns (TargetContract target, CallExamples callExamples) {
+    function run() public broadcast returns (ExtCodeSizeExample example, TargetContract target) {
         // Deploy contracts
+        example = new ExtCodeSizeExample();
+        console.log("ExtCodeSizeExample deployed at:", address(example));
+
         target = new TargetContract();
         console.log("TargetContract deployed at:", address(target));
 
-        callExamples = new CallExamples();
-        console.log("CallExamples deployed at:", address(callExamples));
+        // Create a non-existent address
+        address nonExistent = address(uint160(uint256(keccak256("nonexistent"))));
+        console.log("Non-existent address:", nonExistent);
 
-        console.log("\n--- Testing Normal Call ---");
-        try callExamples.normalCall(target, 123) {
-            console.log("Normal call succeeded");
-            console.log("Target value:", target.value());
+        // Test with existing contract
+        console.log("\n--- Testing with existing contract ---");
+        try example.safeExternalCall(address(target)) {
+            console.log("Safe call to existing contract succeeded");
         } catch {
-            console.log("Normal call failed");
+            console.log("Safe call to existing contract failed");
         }
 
-        console.log("\n--- Testing Low Level Calls ---");
+        console.log("\nContract sizes:");
+        console.log("Target contract:", example.hasCode(address(target)));
+        console.log("Non-existent:", example.hasCode(nonExistent));
 
-        // Test proper low-level calls
-        try callExamples.correctLowLevelCalls(address(target)) {
-            console.log("Correct low-level calls executed");
-            console.log("Target value:", target.value());
-            console.log("Target message:", target.message());
+        // Test unsafe calls to non-existent contract
+        console.log("\n--- Testing with non-existent contract ---");
+        try example.unsafeCallToNonExistent(nonExistent) {
+            console.log("Unsafe call 'succeeded' to non-existent contract!");
         } catch {
-            console.log("Correct low-level calls failed");
+            console.log("Unsafe call failed");
         }
 
-        console.log("\n--- Testing Dangerous Calls ---");
-
-        // Test dangerous calls
-        try callExamples.dangerousExamples(address(target)) {
-            console.log("Dangerous calls executed");
-            console.log("Target value (should be unchanged):", target.value());
+        // Test delegatecall
+        console.log("\n--- Testing delegatecall ---");
+        try example.unsafeDelegateCallToNonExistent(nonExistent) {
+            console.log("Unsafe delegatecall 'succeeded' to non-existent contract!");
         } catch {
-            console.log("Dangerous calls failed");
+            console.log("Unsafe delegatecall failed");
         }
 
-        // Test sending Ether
-        console.log("\n--- Testing Ether Send ---");
-        try callExamples.sendEtherWithCall{ value: 1 ether }(address(target)) {
-            console.log("Ether sent successfully");
-            console.log("Target balance:", address(target).balance);
+        // Test transfer
+        console.log("\n--- Testing transfer ---");
+        try example.transferToNonExistent(payable(nonExistent)) {
+            console.log("Transfer succeeded");
         } catch {
-            console.log("Ether send failed");
+            console.log("Transfer failed (expected)");
         }
 
-        // Test raw call data
-        console.log("\n--- Testing Raw Call Data ---");
-        bytes memory correctData = abi.encodeWithSignature("setValue(uint256)", 999);
-        try callExamples.lowLevelCall(address(target), correctData) {
-            console.log("Raw call succeeded");
-            console.log("Target value:", target.value());
+        // Test safe version with manual check
+        console.log("\n--- Testing safe version with manual check ---");
+        try example.safeCallWithCheck(nonExistent) {
+            console.log("Safe call succeeded");
         } catch {
-            console.log("Raw call failed");
+            console.log("Safe call failed due to extcodesize check (expected)");
         }
     }
 

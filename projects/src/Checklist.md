@@ -17,3 +17,7 @@
     always represented as uint8 values.
 11. Delete vars, doesnt delete and free space, it only set variables to their default values, check the code for
     defaults
+12. The evm considers a call to non-existing contract to always succeed, so there is a check of extcodesize > 0 when
+    making an external call. But call, staticcall, delegatecall, send, transfer do not include this check so need to add
+    it if you are calling non specified contracts
+13.
