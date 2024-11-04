@@ -30,5 +30,14 @@
 12. Precompile contracts defined as address constant ECRECOVER = address(0x1); // Recovery of ECDSA signatures
 13. Functions called from uncheck block still have overflow and underflow check, but bitwise operators dont have those
     checks
-14. If using delegatecall, it will run the code from that contract, but on local values and, other instances of that
+14. After a failed call, Do not assume that the error message is coming directly from the called contract
+15. If using delegatecall, it will run the code from that contract, but on local values and, other instances of that
     contract dont affect local values
+16. After contract creation, The deployed code does not include the constructor code or internal functions only called
+    from the constructor as they wont be used again, so its just used for setting state on initail deployment
+17. Dont use this.f inside constructor
+18. Internal is the default visibility level for state variables
+19. Internal function calls do not create an EVM message call. They are called using simple jump statements. Same for
+    functions of inherited contracts
+20. If you have a public state variable of array type, then you can only retrieve single elements of the array via the
+    auto generated getter function

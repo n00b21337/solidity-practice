@@ -1,121 +1,108 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-// Contract with state variables
-contract Storage {
-    uint256 public value;
-    address public lastCaller;
+// Base contract
+contract Base {
+    uint256 public baseValue;
 
-    event ValueChanged(uint256 newValue, address caller);
-    event ContextInfo(string message, address currentAddress, address msgSender);
+    event FunctionCalled(string name, address caller, uint256 gasLeft);
 
-    constructor() {
-        value = 100;
+    // Internal function - called via jump
+    function internalSet(uint256 value) internal {
+        baseValue = value;
+        emit FunctionCalled("internalSet", msg.sender, gasleft());
     }
 
-    // Updates state and emits context info
-    function updateValue(uint256 newValue) external {
-        value = newValue;
-        lastCaller = msg.sender;
-        emit ValueChanged(newValue, msg.sender);
-        emit ContextInfo("Direct call", address(this), msg.sender);
+    // Public function - creates EVM call when called externally
+    function publicSet(uint256 value) public {
+        baseValue = value;
+        emit FunctionCalled("publicSet", msg.sender, gasleft());
     }
 
-    // Gets current context info
-    function getContextInfo() external view returns (address, address) {
-        return (address(this), msg.sender);
+    // Internal function that calls another internal function
+    function internalWrapper(uint256 value) internal {
+        // This is a jump
+        internalSet(value);
+        emit FunctionCalled("internalWrapper", msg.sender, gasleft());
     }
 }
 
-// Contract that calls Storage in different ways
+// Contract inheriting from Base
+contract Child is Base {
+    uint256 public childValue;
+
+    // Internal call to parent - uses jump
+    function setViaInternal(uint256 value) public {
+        // These are all jumps, no EVM calls
+        internalSet(value); // Jump to parent's internal function
+        childValue = value; // Local state change
+        internalWrapper(value); // Jump to parent's wrapper
+        emit FunctionCalled("setViaInternal", msg.sender, gasleft());
+    }
+
+    // External call to parent - creates EVM call
+    function setViaExternal(uint256 value) public {
+        // This creates an EVM call
+        this.publicSet(value);
+        emit FunctionCalled("setViaExternal", msg.sender, gasleft());
+    }
+
+    // Compare gas usage between internal and external
+    function compareGas(uint256 value) public returns (uint256 gasInternal, uint256 gasExternal) {
+        // Measure internal call gas
+        uint256 startGas = gasleft();
+        internalSet(value);
+        gasInternal = startGas - gasleft();
+
+        // Measure external call gas
+        startGas = gasleft();
+        this.publicSet(value);
+        gasExternal = startGas - gasleft();
+
+        emit FunctionCalled("compareGas", msg.sender, gasleft());
+    }
+}
+
+// Contract to demonstrate external calls vs internal jumps
+contract GasComparison {
+    // Example of multiple internal calls
+    uint256 private value;
+
+    function internalOperation(uint256 x) internal returns (uint256) {
+        return x + 1;
+    }
+
+    function manyInternalCalls() public returns (uint256) {
+        uint256 result = 0;
+        // These are all jumps - very gas efficient
+        result = internalOperation(result);
+        result = internalOperation(result);
+        result = internalOperation(result);
+        return result;
+    }
+}
+
+// Contract to test different call patterns
 contract Caller {
-    uint256 public value; // Local state
-    Storage public storageContract; // Contract to call
+    Child public childContract;
 
-    event CallInfo(string callType, uint256 localValue, uint256 targetValue);
-
-    constructor(address _storage) {
-        storageContract = Storage(_storage);
-        value = 50; // Set local state
+    constructor(address _child) {
+        childContract = Child(_child);
     }
 
-    // Regular call - switches context
-    function normalCall(uint256 newValue) external {
-        // Local state is accessible here
-        value = 100;
+    // Test different call patterns
+    function testCalls(uint256 value) external {
+        // External call - creates EVM call
+        childContract.publicSet(value);
 
-        // This switches context - Storage contract's state is used
-        storageContract.updateValue(newValue);
+        // Another external call
+        childContract.setViaInternal(value);
 
-        emit CallInfo(
-            "Normal call",
-            value, // Local state
-            storageContract.value() // Storage contract state
-        );
+        // Compare gas usage
+        (uint256 gasInternal, uint256 gasExternal) = childContract.compareGas(value);
+
+        emit CallResults(gasInternal, gasExternal);
     }
 
-    // Delegatecall - keeps caller's context
-    function delegateCall(uint256 newValue) external {
-        // Local state is accessible
-        value = 100;
-
-        // This preserves context - uses Caller's state
-        (bool success,) =
-            address(storageContract).delegatecall(abi.encodeWithSignature("updateValue(uint256)", newValue));
-        require(success, "Delegatecall failed");
-
-        emit CallInfo(
-            "Delegatecall",
-            value, // Will be updated by delegatecall
-            storageContract.value() // Storage contract state unchanged
-        );
-    }
-
-    // Try to access state during external call (will fail)
-    function incorrectStateAccess(uint256 newValue) external {
-        // Create a contract that tries to access state
-        StateAccessor accessor = new StateAccessor();
-
-        // This will fail because state is inaccessible during call
-        accessor.tryAccessState(address(storageContract), newValue);
-    }
-}
-
-// Contract that tries to access state during call
-contract StateAccessor {
-    uint256 public value;
-
-    function tryAccessState(address target, uint256 newValue) external {
-        // Set local state
-        value = 75;
-
-        // Make external call
-        Storage(target).updateValue(newValue);
-
-        // Try to access state during call (won't work as expected)
-        value += 1; // This will work but isn't accessing Caller's state
-    }
-}
-
-// Contract to demonstrate proper state handling
-contract SafeCaller {
-    uint256 public value;
-    Storage public storageContract;
-
-    constructor(address _storage) {
-        storageContract = Storage(_storage);
-        value = 50;
-    }
-
-    // Proper state handling - save state before call
-    function safeStateHandling(uint256 newValue) external {
-        // Save state we need
-        uint256 oldValue = value;
-
-        // Make external call
-        storageContract.updateValue(newValue);
-
-        // Can still use saved state
-        value = oldValue + 1;
-    }
+    event CallResults(uint256 gasInternal, uint256 gasExternal);
 }
