@@ -22,6 +22,10 @@
     it if you are calling non specified contracts
 13. address(this).balance == 0 is not good check if the contract has no ether, as it might get from miners/stakers in
     the same block
+
+----------------------- need to sort above by branch
+
 14. Check for return data from external calls "return IReturnContract(target).getNumber();" dont call it like this and
     let silenty fail or send corrupted data "IReturnContract(target).noReturn();"
 15.
+16. Functions called from uncheck block still have overflow and underflow check, but bitwise operators dont have it
