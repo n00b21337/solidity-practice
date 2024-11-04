@@ -25,7 +25,10 @@
 
 ----------------------- need to sort above by branch
 
-14. Check for return data from external calls "return IReturnContract(target).getNumber();" dont call it like this and
+11. Check for return data from external calls "return IReturnContract(target).getNumber();" dont call it like this and
     let silenty fail or send corrupted data "IReturnContract(target).noReturn();"
-15.
-16. Functions called from uncheck block still have overflow and underflow check, but bitwise operators dont have it
+12. Precompile contracts defined as address constant ECRECOVER = address(0x1); // Recovery of ECDSA signatures
+13. Functions called from uncheck block still have overflow and underflow check, but bitwise operators dont have those
+    checks
+14. If using delegatecall, it will run the code from that contract, but on local values and, other instances of that
+    contract dont affect local values

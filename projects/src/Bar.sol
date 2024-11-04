@@ -1,88 +1,121 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-contract UncheckedExample {
-    // Function that will be called from unchecked block
-    function add(uint256 a, uint256 b) public pure returns (uint256) {
-        // Still has overflow checks!
-        return a + b;
+// Contract with state variables
+contract Storage {
+    uint256 public value;
+    address public lastCaller;
+
+    event ValueChanged(uint256 newValue, address caller);
+    event ContextInfo(string message, address currentAddress, address msgSender);
+
+    constructor() {
+        value = 100;
     }
 
-    // Function with its own unchecked block
-    function addUnchecked(uint256 a, uint256 b) public pure returns (uint256) {
-        unchecked {
-            return a + b; // No overflow check here
-        }
+    // Updates state and emits context info
+    function updateValue(uint256 newValue) external {
+        value = newValue;
+        lastCaller = msg.sender;
+        emit ValueChanged(newValue, msg.sender);
+        emit ContextInfo("Direct call", address(this), msg.sender);
     }
 
-    // Demonstrate unchecked block behavior
-    function testUncheckedBehavior() public pure returns (uint256[] memory results) {
-        results = new uint256[](4);
+    // Gets current context info
+    function getContextInfo() external view returns (address, address) {
+        return (address(this), msg.sender);
+    }
+}
 
-        unchecked {
-            // Bitwise operations never check overflow
-            results[0] = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF << 1; // No check
+// Contract that calls Storage in different ways
+contract Caller {
+    uint256 public value; // Local state
+    Storage public storageContract; // Contract to call
 
-            // This call to add() still has checks!
-            // results[1] = add(type(uint256).max, 1);  // Will revert
+    event CallInfo(string callType, uint256 localValue, uint256 targetValue);
 
-            // Direct arithmetic in unchecked doesn't check
-            results[1] = type(uint256).max + 1; // Wraps to 0
-
-            // Bitwise AND
-            results[2] = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF & 0x1; // Always safe
-
-            // Bitwise OR
-            results[3] = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF | 0x1; // Always safe
-        }
-
-        return results;
+    constructor(address _storage) {
+        storageContract = Storage(_storage);
+        value = 50; // Set local state
     }
 
-    // Test function calls
-    function testFunctionCalls(
-        uint256 a,
-        uint256 b
-    )
-        public
-        pure
-        returns (bool normalReverts, bool uncheckedReverts, bool directUncheckedWorks)
-    {
-        // Test normal add (should revert on overflow)
-        try this.add(a, b) {
-            normalReverts = false;
-        } catch {
-            normalReverts = true;
-        }
+    // Regular call - switches context
+    function normalCall(uint256 newValue) external {
+        // Local state is accessible here
+        value = 100;
 
-        // Test unchecked add (should wrap)
-        try this.addUnchecked(a, b) {
-            uncheckedReverts = false;
-        } catch {
-            uncheckedReverts = true;
-        }
+        // This switches context - Storage contract's state is used
+        storageContract.updateValue(newValue);
 
-        // Test direct unchecked arithmetic
-        unchecked {
-            uint256 result = a + b; // Will wrap instead of revert
-            directUncheckedWorks = true;
-        }
-
-        return (normalReverts, uncheckedReverts, directUncheckedWorks);
+        emit CallInfo(
+            "Normal call",
+            value, // Local state
+            storageContract.value() // Storage contract state
+        );
     }
 
-    // Demonstrate bitwise operations
-    function testBitwiseOperations() public pure returns (uint256[] memory results) {
-        results = new uint256[](6);
+    // Delegatecall - keeps caller's context
+    function delegateCall(uint256 newValue) external {
+        // Local state is accessible
+        value = 100;
 
-        // These never need checks, even outside unchecked
-        results[0] = type(uint256).max << 1; // Shift left
-        results[1] = type(uint256).max >> 1; // Shift right
-        results[2] = type(uint256).max & 0x1; // AND
-        results[3] = 0x1 | 0x2; // OR
-        results[4] = type(uint256).max ^ 0x1; // XOR
-        results[5] = ~uint256(0x1); // NOT
+        // This preserves context - uses Caller's state
+        (bool success,) =
+            address(storageContract).delegatecall(abi.encodeWithSignature("updateValue(uint256)", newValue));
+        require(success, "Delegatecall failed");
 
-        return results;
+        emit CallInfo(
+            "Delegatecall",
+            value, // Will be updated by delegatecall
+            storageContract.value() // Storage contract state unchanged
+        );
+    }
+
+    // Try to access state during external call (will fail)
+    function incorrectStateAccess(uint256 newValue) external {
+        // Create a contract that tries to access state
+        StateAccessor accessor = new StateAccessor();
+
+        // This will fail because state is inaccessible during call
+        accessor.tryAccessState(address(storageContract), newValue);
+    }
+}
+
+// Contract that tries to access state during call
+contract StateAccessor {
+    uint256 public value;
+
+    function tryAccessState(address target, uint256 newValue) external {
+        // Set local state
+        value = 75;
+
+        // Make external call
+        Storage(target).updateValue(newValue);
+
+        // Try to access state during call (won't work as expected)
+        value += 1; // This will work but isn't accessing Caller's state
+    }
+}
+
+// Contract to demonstrate proper state handling
+contract SafeCaller {
+    uint256 public value;
+    Storage public storageContract;
+
+    constructor(address _storage) {
+        storageContract = Storage(_storage);
+        value = 50;
+    }
+
+    // Proper state handling - save state before call
+    function safeStateHandling(uint256 newValue) external {
+        // Save state we need
+        uint256 oldValue = value;
+
+        // Make external call
+        storageContract.updateValue(newValue);
+
+        // Can still use saved state
+        value = oldValue + 1;
     }
 }
