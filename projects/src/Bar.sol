@@ -1,86 +1,42 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-// Vulnerable contract relying on balance check
-contract VulnerableContract {
-    function unsafeFunction() external {
-        // UNRELIABLE: Someone can force ETH before this check
-        require(address(this).balance == 0, "Must have no ether");
-        // ... important logic assuming no ETH ...
+contract CallChecksExample {
+    event CallResult(bool success, bytes data);
+
+    // CASE 1: If expecting return data, don't need extcodesize
+    // ABI decoder will revert if no/wrong return data
+    function safeCallWithReturn(address target) external returns (uint256) {
+        // This will revert automatically if target doesn't exist
+        // or doesn't return correct data
+        return ITarget(target).getValue();
     }
 
-    function getBalance() external view returns (uint256) {
-        return address(this).balance;
-    }
-}
-
-// Safer contract tracking its own balance
-contract SafeContract {
-    uint256 private trackedBalance;
-
-    // Only track ETH we explicitly accept
-    receive() external payable {
-        trackedBalance += msg.value;
+    // CASE 2: Low level call returning (success, data)
+    // Does NOT revert automatically if success is false
+    function lowLevelCall(address target) external returns (bool, bytes memory) {
+        (bool success, bytes memory data) = target.call(abi.encodeWithSignature("getValue()"));
+        emit CallResult(success, data);
+        // Just returns result - doesn't revert on false
+        return (success, data);
     }
 
-    function safeFunction() external {
-        // RELIABLE: We only care about ETH we've tracked
-        require(trackedBalance == 0, "Must have no tracked ether");
-        // ... important logic ...
+    // CASE 3: Safe low level call that handles failures
+    function safeLowLevelCall(address target) external returns (bytes memory) {
+        (bool success, bytes memory data) = target.call(abi.encodeWithSignature("getValue()"));
+        require(success, "Call failed"); // Now it will revert on failure
+        return data;
     }
 
-    function withdraw() external {
-        uint256 amount = trackedBalance;
-        trackedBalance = 0;
-        payable(msg.sender).transfer(amount);
-    }
-
-    // Can check actual vs tracked balance
-    function getBalances() external view returns (uint256 actual, uint256 tracked) {
-        return (address(this).balance, trackedBalance);
+    // CASE 4: Complete safe call with data validation
+    function completeSafeCall(address target) external returns (uint256) {
+        (bool success, bytes memory data) = target.call(abi.encodeWithSignature("getValue()"));
+        require(success, "Call failed");
+        require(data.length >= 32, "Invalid return data");
+        return abi.decode(data, (uint256));
     }
 }
 
-// Contract to demonstrate the attack
-contract Attacker {
-    function attackVulnerable(address target) external payable {
-        // Force send ETH via selfdestruct
-        selfdestruct(payable(target));
-        // Now target's balance check will fail
-    }
-}
-
-// Test contract
-contract BalanceTest {
-    event TestResult(string message, uint256 balance);
-
-    function testVulnerable() public returns (bool) {
-        // Deploy vulnerable contract
-        VulnerableContract vulnerable = new VulnerableContract();
-
-        // Try normal operation
-        try vulnerable.unsafeFunction() {
-            emit TestResult("Vulnerable function succeeded", vulnerable.getBalance());
-            return true;
-        } catch {
-            emit TestResult("Vulnerable function failed", vulnerable.getBalance());
-            return false;
-        }
-    }
-
-    function testSafe() public returns (bool) {
-        // Deploy safe contract
-        SafeContract safe = new SafeContract();
-
-        // Try operation
-        try safe.safeFunction() {
-            (uint256 actual, uint256 tracked) = safe.getBalances();
-            emit TestResult("Safe function succeeded", tracked);
-            return true;
-        } catch {
-            (uint256 actual, uint256 tracked) = safe.getBalances();
-            emit TestResult("Safe function failed", tracked);
-            return false;
-        }
-    }
+interface ITarget {
+    function getValue() external returns (uint256);
 }
