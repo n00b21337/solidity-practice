@@ -38,6 +38,7 @@
 17. Dont use this.f inside constructor
 18. Internal is the default visibility level for state variables
 19. Internal function calls do not create an EVM message call. They are called using simple jump statements. Same for
-    functions of inherited contracts
+    functions of inherited contracts but otherContract.function(); does make EVM call or this.externalFunction(); which
+    changes context and also make more gas costs
 20. If you have a public state variable of array type, then you can only retrieve single elements of the array via the
     auto generated getter function
