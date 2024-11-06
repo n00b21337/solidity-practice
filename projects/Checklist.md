@@ -42,3 +42,9 @@
     changes context and also make more gas costs
 20. If you have a public state variable of array type, then you can only retrieve single elements of the array via the
     auto generated getter function
+21. Without a payable keyword in function declaration, it will auto reject all ether sent to it. It will revert.
+22. Modifiers can also be defined in libraries but their use is limited to functions of the same library
+23. Multiple modifiers are applied to a function by specifying them in a whitespace-separated list and are evaluated in
+    the order presented. Modifier Order Matters
+24. The \_ symbol can appear in the modifier multiple times. Each occurrence is replaced with the function body.
+    Variables introduced in the modifier are not visible in the function

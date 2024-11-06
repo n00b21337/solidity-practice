@@ -1,108 +1,134 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-// Base contract
-contract Base {
-    uint256 public baseValue;
+contract ModifierExamples {
+    uint256 public value;
 
-    event FunctionCalled(string name, address caller, uint256 gasLeft);
+    event ModifierExecuted(string step, uint256 value);
 
-    // Internal function - called via jump
-    function internalSet(uint256 value) internal {
-        baseValue = value;
-        emit FunctionCalled("internalSet", msg.sender, gasleft());
+    // Modifier with single underscore
+    modifier basic() {
+        emit ModifierExecuted("Before", value);
+        _; // Function body goes here
+        emit ModifierExecuted("After", value);
     }
 
-    // Public function - creates EVM call when called externally
-    function publicSet(uint256 value) public {
-        baseValue = value;
-        emit FunctionCalled("publicSet", msg.sender, gasleft());
+    // Modifier with multiple underscores
+    modifier multipleExecutions() {
+        emit ModifierExecuted("First execution start", value);
+        _; // First execution of function body
+        emit ModifierExecuted("Between executions", value);
+        _; // Second execution of function body
+        emit ModifierExecuted("Second execution end", value);
     }
 
-    // Internal function that calls another internal function
-    function internalWrapper(uint256 value) internal {
-        // This is a jump
-        internalSet(value);
-        emit FunctionCalled("internalWrapper", msg.sender, gasleft());
+    // Modifier with local variables (not visible in function)
+    modifier withLocalVars( // Only visible in modifier
+    ) {
+        uint256 modifierVar = 100;
+        emit ModifierExecuted("ModifierVar", modifierVar);
+        _;
+        // Function cannot access modifierVar
+    }
+
+    // Modifier with parameters
+    modifier checkValue(uint256 threshold) {
+        require(value <= threshold, "Value too high");
+        _;
+        // threshold not visible in function
+    }
+
+    // Basic function with single modifier
+    function basicExample() public basic {
+        value += 1;
+        // Cannot access modifier's local variables here
+    }
+
+    // Function executed multiple times
+    function multipleExample() public multipleExecutions {
+        value += 1;
+        emit ModifierExecuted("In function", value);
+    }
+
+    // Function with modifier that has local vars
+    function localVarExample() public withLocalVars {
+        // Cannot access modifierVar here
+        value += 1;
+        // This would not compile: modifierVar += 1;
+    }
+
+    // Multiple modifiers - executed in order
+    function multiModifierExample() public basic withLocalVars checkValue(200) {
+        value += 1;
+    }
+
+    // Examples of what NOT to do
+    uint256 private attempts;
+
+    // BAD: Modifier changing state that function might depend on
+    modifier unsafeStateChange( // Modifies state
+    ) {
+        attempts += 1;
+        _;
+        // Function might depend on attempts value
+    }
+
+    // BAD: Modifier using function local variables
+    modifier unsafeVarAccess() {
+        // These variables don't exist yet
+        // x and y are not in scope
+        // require(x + y <= 100, "Sum too large");
+        _;
     }
 }
 
-// Contract inheriting from Base
-contract Child is Base {
-    uint256 public childValue;
+// Contract to demonstrate proper modifier patterns
+contract SafeModifiers {
+    uint256 public value;
 
-    // Internal call to parent - uses jump
-    function setViaInternal(uint256 value) public {
-        // These are all jumps, no EVM calls
-        internalSet(value); // Jump to parent's internal function
-        childValue = value; // Local state change
-        internalWrapper(value); // Jump to parent's wrapper
-        emit FunctionCalled("setViaInternal", msg.sender, gasleft());
+    // GOOD: Modifier only checks conditions
+    modifier onlyPositive(uint256 x) {
+        require(x > 0, "Must be positive");
+        _;
     }
 
-    // External call to parent - creates EVM call
-    function setViaExternal(uint256 value) public {
-        // This creates an EVM call
-        this.publicSet(value);
-        emit FunctionCalled("setViaExternal", msg.sender, gasleft());
+    // GOOD: Modifier handles its own variables
+    modifier withTracking() {
+        uint256 beforeValue = value;
+        _;
+        require(value > beforeValue, "Value must increase");
     }
 
-    // Compare gas usage between internal and external
-    function compareGas(uint256 value) public returns (uint256 gasInternal, uint256 gasExternal) {
-        // Measure internal call gas
-        uint256 startGas = gasleft();
-        internalSet(value);
-        gasInternal = startGas - gasleft();
-
-        // Measure external call gas
-        startGas = gasleft();
-        this.publicSet(value);
-        gasExternal = startGas - gasleft();
-
-        emit FunctionCalled("compareGas", msg.sender, gasleft());
+    // Function using modifiers correctly
+    function safeOperation(uint256 x) public onlyPositive(x) withTracking {
+        value += x;
     }
 }
 
-// Contract to demonstrate external calls vs internal jumps
-contract GasComparison {
-    // Example of multiple internal calls
-    uint256 private value;
+// Contract to test modifier behaviors
+contract ModifierTester {
+    ModifierExamples public examples;
+    SafeModifiers public safe;
 
-    function internalOperation(uint256 x) internal returns (uint256) {
-        return x + 1;
+    constructor() {
+        examples = new ModifierExamples();
+        safe = new SafeModifiers();
     }
 
-    function manyInternalCalls() public returns (uint256) {
-        uint256 result = 0;
-        // These are all jumps - very gas efficient
-        result = internalOperation(result);
-        result = internalOperation(result);
-        result = internalOperation(result);
-        return result;
+    function testAll() external {
+        // Test basic modifier
+        examples.basicExample();
+
+        // Test multiple executions
+        examples.multipleExample();
+
+        // Test local var example
+        examples.localVarExample();
+
+        // Test multiple modifiers
+        examples.multiModifierExample();
+
+        // Test safe modifiers
+        safe.safeOperation(10);
     }
-}
-
-// Contract to test different call patterns
-contract Caller {
-    Child public childContract;
-
-    constructor(address _child) {
-        childContract = Child(_child);
-    }
-
-    // Test different call patterns
-    function testCalls(uint256 value) external {
-        // External call - creates EVM call
-        childContract.publicSet(value);
-
-        // Another external call
-        childContract.setViaInternal(value);
-
-        // Compare gas usage
-        (uint256 gasInternal, uint256 gasExternal) = childContract.compareGas(value);
-
-        emit CallResults(gasInternal, gasExternal);
-    }
-
-    event CallResults(uint256 gasInternal, uint256 gasExternal);
 }

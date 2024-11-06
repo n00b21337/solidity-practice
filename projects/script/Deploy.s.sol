@@ -1,51 +1,59 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity >=0.8.25 <0.9.0;
 
-import { Base, Child, GasComparison, Caller } from "../src/Bar.sol";
+import { ModifierExamples, SafeModifiers, ModifierTester } from "../src/Bar.sol";
 import { BaseScript, console } from "./Base.s.sol";
 
 contract Deploy is BaseScript {
-    function run() public broadcast returns (Child child, GasComparison gasComp, Caller caller) {
+    function run() public broadcast returns (ModifierExamples examples, SafeModifiers safe, ModifierTester tester) {
         // Deploy contracts
-        child = new Child();
-        gasComp = new GasComparison();
-        caller = new Caller(address(child));
+        examples = new ModifierExamples();
+        safe = new SafeModifiers();
+        tester = new ModifierTester();
 
-        console.log("\n--- Testing Internal vs External Calls ---");
+        console.log("\n--- Testing Basic Modifier ---");
+        examples.basicExample();
+        console.log("Basic example value:", examples.value());
 
-        // Test internal call
-        uint256 startGas = gasleft();
-        child.setViaInternal(100);
-        uint256 internalGas = startGas - gasleft();
-        console.log("Gas used for internal call:", internalGas);
+        console.log("\n--- Testing Multiple Executions ---");
+        examples.multipleExample();
+        console.log("Multiple example value:", examples.value());
 
-        // Test external call
-        startGas = gasleft();
-        child.setViaExternal(200);
-        uint256 externalGas = startGas - gasleft();
-        console.log("Gas used for external call:", externalGas);
+        console.log("\n--- Testing Local Var Example ---");
+        examples.localVarExample();
+        console.log("Local var example value:", examples.value());
 
-        console.log("\n--- Testing Inheritance Jumps ---");
-        console.log("Base value before:", child.baseValue());
-        child.setViaInternal(300);
-        console.log("Base value after internal:", child.baseValue());
-        child.setViaExternal(400);
-        console.log("Base value after external:", child.baseValue());
+        console.log("\n--- Testing Multiple Modifiers ---");
+        examples.multiModifierExample();
+        console.log("Multi modifier example value:", examples.value());
 
-        console.log("\n--- Testing Multiple Internal Calls ---");
-        startGas = gasleft();
-        uint256 result = gasComp.manyInternalCalls();
-        uint256 multipleJumpsGas = startGas - gasleft();
-        console.log("Result of multiple jumps:", result);
-        console.log("Gas used for multiple jumps:", multipleJumpsGas);
+        console.log("\n--- Testing Safe Modifiers ---");
+        safe.safeOperation(10);
+        console.log("Safe operation value:", safe.value());
 
-        console.log("\n--- Testing via Caller Contract ---");
-        try caller.testCalls(500) {
-            console.log("Caller test completed");
-            console.log("Final base value:", child.baseValue());
-            console.log("Final child value:", child.childValue());
-        } catch {
-            console.log("Caller test failed");
-        }
+        console.log("\n--- Testing Invalid Cases ---");
+        // Test first revert condition
+        console.log("Testing zero input:");
+        vm.expectRevert("Must be positive");
+        safe.safeOperation(0);
+        console.log("Revert caught as expected for zero input");
+
+        // To test the "Value must increase" condition, we need to pass the first check
+        // but fail the second one
+        console.log("\nTesting no value increase:");
+        safe.safeOperation(10); // First set a value
+        vm.expectRevert("Value must increase");
+        safe.safeOperation(5); // Try with smaller value
+        console.log("Revert caught as expected for no increase");
+
+        // Test the full flow with tester
+        console.log("\n--- Testing Full Flow ---");
+        tester.testAll();
+        console.log("All tests completed");
+
+        // Final state checks
+        console.log("\n--- Final States ---");
+        console.log("Examples contract value:", examples.value());
+        console.log("Safe contract value:", safe.value());
     }
 }
