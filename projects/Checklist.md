@@ -48,3 +48,15 @@
     the order presented. Modifier Order Matters
 24. The \_ symbol can appear in the modifier multiple times. Each occurrence is replaced with the function body.
     Variables introduced in the modifier are not visible in the function
+25. For values of immutable variables, 32 bytes are reserved in the code, even if they would fit in fewer bytes
+26. The compiler does not reserve a storage slot for constant and immutable variables, and every occurrence is replaced
+    by the respective value and added to deployed code
+27. The code of free functions is included in all contracts that call them, similar to internal library functions (free
+    functions are those that exist at file level, outside of a contract.)
+28. Functions defined outside a contract are still always executed in the context of a contract. They still can call
+    other contracts, send them Ether and destroy the contract that called them
+29. The opcode STATICCALL is used when view functions are called, For library view functions DELEGATECALL is used(if
+    interacting with already deployed library). This means library view functions do not have run-time checks that
+    prevent state modifications and you can modify state as it runs code in caller's context. Prevention, dont modify
+    state in libraries if you put only VIEW
+30.
