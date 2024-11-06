@@ -1,58 +1,27 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import { console } from "forge-std/src/Script.sol";
+contract PureExamples {
+    uint256 public value = 100; // State variable
 
-// Library with "view" function that actually modifies state
-library ViewLibrary {
-    // Even though this is marked view, it can modify state!
-    function dangerousView(uint256 value) public view returns (uint256) {
-        // This works despite being marked as view!
-        value = 42;
-        return value;
+    // This is fine - only uses parameter
+    function trulyPure(uint256 x) public pure returns (uint256) {
+        return x * 2; // OK - only uses parameter x
     }
 
-    // Safe view function for comparison
-    function safeView(uint256 value) public view returns (uint256) {
-        return value;
-    }
-}
-
-// Contract using the library
-contract DemoContract {
-    using ViewLibrary for uint256;
-
-    uint256 public value;
-
-    // This will actually modify state despite using a "view" function
-    function useLibraryView() public returns (uint256) {
-        return value.dangerousView();
+    // This won't compile - tries to use state variable 'value'
+    function notPure(uint256 x) public pure returns (uint256) {
+        // return value + x;  // ERROR - can't access state variable 'value' in pure function
+        return x + 1; // This line would be fine
     }
 
-    // This is actually view-safe
-    function useSafeView() public view returns (uint256) {
-        return value.safeView();
+    // This is also fine - uses multiple parameters
+    function alsoTrulyPure(uint256 x, uint256 y) public pure returns (uint256) {
+        return x + y; // OK - only uses parameters
     }
 
-    // For comparison - regular view function
-    function regularView() public view returns (uint256) {
-        return value;
-        // This would not compile:
-        // value = 42;
-    }
-}
-
-// Test contract
-contract TestContract {
-    DemoContract public demo;
-
-    constructor() {
-        demo = new DemoContract();
-    }
-
-    function testStateChange() public {
-        console.log("Value before:", demo.value());
-        demo.useLibraryView();
-        console.log("Value after:", demo.value());
+    // For comparison - view function can access state
+    function viewFunction(uint256 x) public view returns (uint256) {
+        return value + x; // OK - view functions can read state
     }
 }
