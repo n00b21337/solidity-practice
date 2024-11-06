@@ -59,4 +59,7 @@
     interacting with already deployed library). This means library view functions do not have run-time checks that
     prevent state modifications and you can modify state as it runs code in caller's context. Prevention, dont modify
     state in libraries if you put only VIEW
-30.
+30. For pure functions, the opcode STATICCALL is used, which does not guarantee that the state is not read, but at least
+    that it is not modified. It is not possible to prevent functions from reading the state at the level of the EVM (low
+    level calls with assembly)
+31.
