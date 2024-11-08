@@ -62,5 +62,6 @@
 30. For pure functions, the opcode STATICCALL is used, which does not guarantee that the state is not read, but at least
     that it is not modified. It is not possible to prevent functions from reading the state at the level of the EVM (low
     level calls with assembly)
-31. The data returned from fallback function will not be ABI-encoded. Instead it will be returned without modifications
-    (not even padding)
+31. The data returned from fallback function will not be ABI-encoded if returning like "return hex"1234"". Instead it
+    will be returned without modifications (not even padding)
+32.
